@@ -1,612 +1,304 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Low-Poly Pavilion · Date Night</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { overflow: hidden; background: #64B5F6; font-family: sans-serif; }
-  canvas { display: block; }
-  #info {
-    position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
-    color: rgba(255,255,255,0.95); font-size: 12px; letter-spacing: 1px;
-    text-shadow: 0 1px 4px rgba(0,0,0,0.5); pointer-events: none;
-    background: rgba(0,0,0,0.25); padding: 6px 20px; border-radius: 20px;
-    white-space: nowrap;
-  }
-</style>
+  <meta charset="UTF-8"/>
+  <title>PracticalQuiz2</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <script src="./script/aframe.js"></script>
+  <style>
+    #hint{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);
+      background:rgba(0,0,0,.45);color:#fff;font:13px/1.6 sans-serif;
+      padding:6px 20px;border-radius:20px;pointer-events:none;z-index:99;
+      letter-spacing:.5px;white-space:nowrap;}
+  </style>
 </head>
 <body>
-<div id="info">🖱️ Left drag: rotate &nbsp;|&nbsp; Right drag: pan &nbsp;|&nbsp; Scroll: zoom &nbsp;|&nbsp; 🌹 Date Night Pavilion</div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script>
-// Helper: Create mesh with position
-function createMesh(geom, mat, pos) {
-  const m = new THREE.Mesh(geom, mat);
-  if (pos) m.position.copy(pos);
-  return m;
-}
+<div id="hint">Drag to look &nbsp;·&nbsp; WASD to move &nbsp;·&nbsp; FCM.41.008.021.24</div>
 
-// ═══════════════════════════════════════════════════════════════
-//  INLINE ORBIT CONTROLS
-// ═══════════════════════════════════════════════════════════════
-class OrbitControls {
-  constructor(camera, el) {
-    this.camera = camera; this.domElement = el;
-    this.target = new THREE.Vector3(0, 2, -6);
-    this.minDistance = 3; this.maxDistance = 130;
-    this.minPolar = 0.05; this.maxPolar = Math.PI * 0.47;
-    this.enableDamping = true; this.dampingFactor = 0.08;
-    this.rotateSpeed = 0.6; this.panSpeed = 0.8; this.zoomSpeed = 1.0;
-    this._sph = new THREE.Spherical(); this._sphD = new THREE.Spherical();
-    this._panOff = new THREE.Vector3(); this._scale = 1;
-    this._state = 'none'; this._mouse = {x:0,y:0}; this._touches = null; this._pinchDist = 0;
-    const offset = new THREE.Vector3().subVectors(camera.position, this.target);
-    this._sph.setFromVector3(offset);
-    el.addEventListener('mousedown', e=>this._md(e));
-    el.addEventListener('mousemove', e=>this._mm(e));
-    el.addEventListener('mouseup',   ()=>this._state='none');
-    el.addEventListener('mouseleave',()=>this._state='none');
-    el.addEventListener('wheel',     e=>this._wheel(e), {passive:false});
-    el.addEventListener('contextmenu',e=>e.preventDefault());
-    el.addEventListener('touchstart', e=>this._ts(e), {passive:false});
-    el.addEventListener('touchmove',  e=>this._tm(e), {passive:false});
-    el.addEventListener('touchend',   ()=>{this._state='none';this._touches=null;});
-  }
-  _md(e){e.preventDefault();this._mouse={x:e.clientX,y:e.clientY};this._state=e.button===0?'rotate':'pan';}
-  _mm(e){
-    if(this._state==='none')return;
-    const dx=e.clientX-this._mouse.x, dy=e.clientY-this._mouse.y;
-    this._mouse={x:e.clientX,y:e.clientY};
-    if(this._state==='rotate'){
-      this._sphD.theta-=(2*Math.PI*dx/this.domElement.clientWidth)*this.rotateSpeed;
-      this._sphD.phi  -=(2*Math.PI*dy/this.domElement.clientHeight)*this.rotateSpeed;
-    } else { this._doPan(dx,dy); }
-  }
-  _wheel(e){e.preventDefault();this._scale*=e.deltaY<0?Math.pow(0.95,-this.zoomSpeed):Math.pow(0.95,this.zoomSpeed);}
-  _ts(e){e.preventDefault();if(e.touches.length===1){this._state='rotate';this._touches=[{x:e.touches[0].clientX,y:e.touches[0].clientY}];}else if(e.touches.length===2){this._state='pinch';const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;this._pinchDist=Math.sqrt(dx*dx+dy*dy);}}
-  _tm(e){e.preventDefault();if(this._state==='rotate'&&e.touches.length===1&&this._touches){const dx=e.touches[0].clientX-this._touches[0].x,dy=e.touches[0].clientY-this._touches[0].y;this._sphD.theta-=(2*Math.PI*dx/this.domElement.clientWidth)*this.rotateSpeed;this._sphD.phi-=(2*Math.PI*dy/this.domElement.clientHeight)*this.rotateSpeed;this._touches=[{x:e.touches[0].clientX,y:e.touches[0].clientY}];}else if(this._state==='pinch'&&e.touches.length===2){const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;const d=Math.sqrt(dx*dx+dy*dy);this._scale*=this._pinchDist/d;this._pinchDist=d;}}
-  _doPan(dx,dy){const el=this.domElement;const dist=new THREE.Vector3().subVectors(this.camera.position,this.target).length();const tgt=dist*Math.tan((this.camera.fov/2)*Math.PI/180);const r=new THREE.Vector3(),u=new THREE.Vector3();r.setFromMatrixColumn(this.camera.matrix,0);u.setFromMatrixColumn(this.camera.matrix,1);r.multiplyScalar(-(2*dx*tgt/el.clientHeight)*this.panSpeed);u.multiplyScalar((2*dy*tgt/el.clientHeight)*this.panSpeed);this._panOff.add(r).add(u);}
-  update(){
-    const off=new THREE.Vector3().subVectors(this.camera.position,this.target);
-    this._sph.setFromVector3(off);
-    const f=this.enableDamping?this.dampingFactor:1;
-    this._sph.theta+=this._sphD.theta*f; this._sph.phi+=this._sphD.phi*f;
-    this._sphD.theta*=(1-f); this._sphD.phi*=(1-f);
-    this._sph.phi=Math.max(this.minPolar,Math.min(this.maxPolar,this._sph.phi));
-    this._sph.radius=Math.max(this.minDistance,Math.min(this.maxDistance,this._sph.radius*this._scale));
-    this._scale=1;
-    this.target.add(this._panOff.clone().multiplyScalar(f));
-    this._panOff.multiplyScalar(1-f);
-    off.setFromSpherical(this._sph);
-    this.camera.position.copy(this.target).add(off);
-    this.camera.lookAt(this.target);
-  }
-}
+<a-scene fog="type:linear;color:#87CEEB;near:80;far:220"
+         background="color:#1565C0">
 
-// ═══════════════════════════════════════════════════════════════
-//  RENDERER & SCENE
-// ═══════════════════════════════════════════════════════════════
-const scene = new THREE.Scene();
-const W = window.innerWidth, H = window.innerHeight;
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(W, H);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setClearColor(0x64B5F6);
-document.body.appendChild(renderer.domElement);
+  <!-- SKY -->
+  <a-sky color="#1E88E5"></a-sky>
+  <a-cylinder position="0 -8 0" radius="270" height="55" color="#64B5F6" side="back" opacity="0.5" material="shader:flat;transparent:true"></a-cylinder>
 
-const camera = new THREE.PerspectiveCamera(60, W/H, 0.1, 600);
-camera.position.set(0, 5, 24);
-camera.lookAt(0, 2, -6);
+  <!-- SUN -->
+  <a-circle position="60 58 -150" radius="5.5" color="#FFF9C4" material="shader:flat;side:double"></a-circle>
+  <a-circle position="60 58 -151" radius="8.5" color="#FFF59D" material="shader:flat;side:double;transparent:true;opacity:0.25"></a-circle>
+  <a-circle position="60 58 -152" radius="12"  color="#FFF176" material="shader:flat;side:double;transparent:true;opacity:0.12"></a-circle>
 
-// ─── SKY — MeshBasicMaterial so it is never affected by scene lights ──────────
-// We use a large box with BackSide + basic material for guaranteed colour
-const SKY_TOP    = new THREE.Color(0x0D47A1); // vibrant deep blue
-const SKY_BOTTOM = new THREE.Color(0x4FC3F7); // vibrant sky blue
+  <!-- LIGHTS -->
+  <a-light type="ambient"     color="#FFFDE7" intensity="1.0"></a-light>
+  <a-light type="directional" color="#FFF9E0" intensity="1.4" position="40 70 25" cast-shadow="true" shadow-camera-left="-70" shadow-camera-right="70" shadow-camera-top="70" shadow-camera-bottom="-70"></a-light>
+  <a-light type="directional" color="#FFF3CD" intensity="0.45" position="-25 20 15"></a-light>
+  <a-light type="point" color="#FFD54F" intensity="2.2" distance="20" position="0 3.5 -6"></a-light>
+  <a-light type="point" color="#FF8F00" intensity="1.6" distance="7"  position="0 2.4 -6.5"></a-light>
 
-const skyGeo = new THREE.SphereGeometry(280, 20, 12);
-const skyMat = new THREE.ShaderMaterial({
-  depthWrite: false,
-  side: THREE.BackSide,
-  uniforms: {
-    uTop:    { value: SKY_TOP },
-    uBottom: { value: SKY_BOTTOM },
-  },
-  vertexShader: `
-    varying float vH;
-    void main(){
-      vH = position.y;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
-    }`,
-  fragmentShader: `
-    uniform vec3 uTop;
-    uniform vec3 uBottom;
-    varying float vH;
-    void main(){
-      float t = clamp((vH + 60.0) / 240.0, 0.0, 1.0);
-      gl_FragColor = vec4(mix(uBottom, uTop, t), 1.0);
-    }`,
-});
-const skySphere = new THREE.Mesh(skyGeo, skyMat);
-// CRITICAL: sky must not be lit — add as a raw object that ignores lights
-// Shader material with no lighting uniforms achieves this automatically.
-scene.add(skySphere);
+  <!-- GROUND -->
+  <a-plane position="0 0 0" rotation="-90 0 0" width="220" height="220" color="#2E8B1A" shadow="receive:true;cast:false"></a-plane>
 
-// ─── SUN ─────────────────────────────────────────────────────
-const sunMesh = new THREE.Mesh(new THREE.CircleGeometry(7,10), new THREE.MeshBasicMaterial({color:0xFFF9C4}));
-sunMesh.position.set(55,75,-140); scene.add(sunMesh);
-const haloMesh = new THREE.Mesh(new THREE.CircleGeometry(11,10), new THREE.MeshBasicMaterial({color:0xFFFDE7,transparent:true,opacity:0.28}));
-haloMesh.position.set(55,75,-141); scene.add(haloMesh);
+  <!-- PATHWAY -->
+  <a-box position="0.1 0.03 19"   width="2.0" height="0.07" depth="1.1" color="#BCAAA4" rotation="0 1.5 0"></a-box>
+  <a-box position="-0.1 0.03 16"  width="1.9" height="0.07" depth="1.0" color="#D7CCC8" rotation="0 -1 0"></a-box>
+  <a-box position="0.15 0.03 13"  width="2.0" height="0.07" depth="1.1" color="#BCAAA4"></a-box>
+  <a-box position="-0.1 0.03 10"  width="1.9" height="0.07" depth="1.0" color="#D7CCC8" rotation="0 2 0"></a-box>
+  <a-box position="0.1 0.03 7"    width="2.0" height="0.07" depth="1.1" color="#BCAAA4" rotation="0 -1.5 0"></a-box>
+  <a-box position="0 0.03 4"      width="1.9" height="0.07" depth="1.0" color="#D7CCC8"></a-box>
+  <a-box position="-0.1 0.03 1"   width="2.0" height="0.07" depth="1.1" color="#BCAAA4" rotation="0 1 0"></a-box>
+  <a-box position="0.1 0.03 -2"   width="1.9" height="0.07" depth="1.0" color="#D7CCC8" rotation="0 -2 0"></a-box>
 
-// ─── FOG — match sky bottom colour ───────────────────────────
-scene.fog = new THREE.FogExp2(0x90CAF9, 0.0045);
+  <!-- ENTRANCE HEDGE WALLS -->
+  <a-entity position="-10 0 14" rotation="0 18 0">
+    <a-box position="0 3 0"      width="0.7" height="6" depth="0.7" color="#43A047"></a-box>
+    <a-box position="-2.5 3 -1"  width="0.7" height="6" depth="0.7" color="#388E3C"></a-box>
+    <a-box position="-5 3 -3.5"  width="0.7" height="6" depth="0.7" color="#43A047"></a-box>
+    <a-box position="-2.5 6.35 -0.5" width="6" height="0.5" depth="0.6" color="#2E7D32"></a-box>
+  </a-entity>
+  <a-entity position="10 0 14" rotation="0 -18 0">
+    <a-box position="0 3 0"     width="0.7" height="6" depth="0.7" color="#43A047"></a-box>
+    <a-box position="2.5 3 -1"  width="0.7" height="6" depth="0.7" color="#388E3C"></a-box>
+    <a-box position="5 3 -3.5"  width="0.7" height="6" depth="0.7" color="#43A047"></a-box>
+    <a-box position="2.5 6.35 -0.5" width="6" height="0.5" depth="0.6" color="#2E7D32"></a-box>
+  </a-entity>
 
-// ═══════════════════════════════════════════════════════════════
-//  LIGHTING
-// ═══════════════════════════════════════════════════════════════
-// Strong ambient so day scene is bright
-scene.add(new THREE.AmbientLight(0xFFF8E1, 1.3));
+  <!-- ══ PAVILION (0,0,−6) ══ -->
+  <a-entity position="0 0 -6">
+    <a-cylinder position="0 0.22 0" radius="4.6" height="0.44" color="#F5F0E8" segments-radial="12" shadow="cast:true;receive:true"></a-cylinder>
+    <a-cylinder position="0 0.08 0" radius="5.0" height="0.16" color="#ECE5DA" segments-radial="12"></a-cylinder>
+    <!-- pillars -->
+    <a-cylinder position=" 3.9  2.3  0"    radius="0.22" height="4.2" color="#FAFAFA" segments-radial="8" shadow="cast:true"></a-cylinder>
+    <a-cylinder position=" 1.95 2.3  3.38" radius="0.22" height="4.2" color="#FAFAFA" segments-radial="8" shadow="cast:true"></a-cylinder>
+    <a-cylinder position="-1.95 2.3  3.38" radius="0.22" height="4.2" color="#FAFAFA" segments-radial="8" shadow="cast:true"></a-cylinder>
+    <a-cylinder position="-3.9  2.3  0"    radius="0.22" height="4.2" color="#FAFAFA" segments-radial="8" shadow="cast:true"></a-cylinder>
+    <a-cylinder position="-1.95 2.3 -3.38" radius="0.22" height="4.2" color="#FAFAFA" segments-radial="8" shadow="cast:true"></a-cylinder>
+    <a-cylinder position=" 1.95 2.3 -3.38" radius="0.22" height="4.2" color="#FAFAFA" segments-radial="8" shadow="cast:true"></a-cylinder>
+    <!-- roof -->
+    <a-cone position="0 5.35 0" radius-bottom="5.2" radius-top="0.3" height="2.6" color="#2E7D32" segments-radial="6" shadow="cast:true"></a-cone>
+    <a-cone position="0 6.75 0" radius-bottom="0.7" radius-top="0" height="0.9" color="#1B5E20" segments-radial="6"></a-cone>
+    <a-sphere position="0 7.4 0" radius="0.2" color="#FFD700" segments-height="6" segments-width="6"></a-sphere>
+    <!-- garland tori -->
+    <a-torus position=" 3.9  3.9  0"    radius="0.3" radius-tubular="0.07" color="#FF80AB" segments-tubular="8" rotation="90 0 0"></a-torus>
+    <a-torus position=" 1.95 3.9  3.38" radius="0.3" radius-tubular="0.07" color="#FF80AB" segments-tubular="8" rotation="90 0 0"></a-torus>
+    <a-torus position="-1.95 3.9  3.38" radius="0.3" radius-tubular="0.07" color="#FF80AB" segments-tubular="8" rotation="90 0 0"></a-torus>
+    <a-torus position="-3.9  3.9  0"    radius="0.3" radius-tubular="0.07" color="#FF80AB" segments-tubular="8" rotation="90 0 0"></a-torus>
+    <a-torus position="-1.95 3.9 -3.38" radius="0.3" radius-tubular="0.07" color="#FF80AB" segments-tubular="8" rotation="90 0 0"></a-torus>
+    <a-torus position=" 1.95 3.9 -3.38" radius="0.3" radius-tubular="0.07" color="#FF80AB" segments-tubular="8" rotation="90 0 0"></a-torus>
+    <!-- string lights -->
+    <a-sphere position=" 4.0  3.6  0"    radius="0.09" color="#FFECB3" material="shader:flat"></a-sphere>
+    <a-sphere position=" 3.46 3.6  2.0"  radius="0.09" color="#FFD54F" material="shader:flat"></a-sphere>
+    <a-sphere position=" 2.0  3.6  3.46" radius="0.09" color="#FF80AB" material="shader:flat"></a-sphere>
+    <a-sphere position=" 0    3.6  4.0"  radius="0.09" color="#FFECB3" material="shader:flat"></a-sphere>
+    <a-sphere position="-2.0  3.6  3.46" radius="0.09" color="#80DEEA" material="shader:flat"></a-sphere>
+    <a-sphere position="-3.46 3.6  2.0"  radius="0.09" color="#FFECB3" material="shader:flat"></a-sphere>
+    <a-sphere position="-4.0  3.6  0"    radius="0.09" color="#CE93D8" material="shader:flat"></a-sphere>
+    <a-sphere position="-3.46 3.6 -2.0"  radius="0.09" color="#FFECB3" material="shader:flat"></a-sphere>
+    <a-sphere position="-2.0  3.6 -3.46" radius="0.09" color="#FFD54F" material="shader:flat"></a-sphere>
+    <a-sphere position=" 0    3.6 -4.0"  radius="0.09" color="#FFECB3" material="shader:flat"></a-sphere>
+    <a-sphere position=" 2.0  3.6 -3.46" radius="0.09" color="#FF80AB" material="shader:flat"></a-sphere>
+    <a-sphere position=" 3.46 3.6 -2.0"  radius="0.09" color="#FFECB3" material="shader:flat"></a-sphere>
+  </a-entity>
 
-// Main sun directional
-const sunLight = new THREE.DirectionalLight(0xFFF9E0, 1.5);
-sunLight.position.set(30, 60, 20);
-sunLight.castShadow = true;
-sunLight.shadow.mapSize.width = 2048; sunLight.shadow.mapSize.height = 2048;
-sunLight.shadow.camera.left=-65; sunLight.shadow.camera.right=65;
-sunLight.shadow.camera.top=65;   sunLight.shadow.camera.bottom=-65;
-sunLight.shadow.camera.near=1;   sunLight.shadow.camera.far=220;
-scene.add(sunLight);
+  <!-- PATH LANTERN POSTS -->
+  <a-entity position="-3 0 12"><a-cylinder position="0 1 0" radius="0.07" height="2.0" color="#4A3728" segments-radial="6"></a-cylinder><a-box position="0 2.08 0" width="0.3" height="0.38" depth="0.3" color="#FFECB3" material="emissive:#FF6F00;emissiveIntensity:0.8;transparent:true;opacity:0.9"></a-box><a-cone position="0 2.33 0" radius-bottom="0.22" radius-top="0" height="0.2" color="#4A3728" segments-radial="4"></a-cone><a-light type="point" color="#FFAB40" intensity="1.4" distance="8"></a-light></a-entity>
+  <a-entity position=" 3 0 12"><a-cylinder position="0 1 0" radius="0.07" height="2.0" color="#4A3728" segments-radial="6"></a-cylinder><a-box position="0 2.08 0" width="0.3" height="0.38" depth="0.3" color="#FFECB3" material="emissive:#FF6F00;emissiveIntensity:0.8;transparent:true;opacity:0.9"></a-box><a-cone position="0 2.33 0" radius-bottom="0.22" radius-top="0" height="0.2" color="#4A3728" segments-radial="4"></a-cone><a-light type="point" color="#FFAB40" intensity="1.4" distance="8"></a-light></a-entity>
+  <a-entity position="-3 0 4"> <a-cylinder position="0 1 0" radius="0.07" height="2.0" color="#4A3728" segments-radial="6"></a-cylinder><a-box position="0 2.08 0" width="0.3" height="0.38" depth="0.3" color="#FFECB3" material="emissive:#FF6F00;emissiveIntensity:0.8;transparent:true;opacity:0.9"></a-box><a-cone position="0 2.33 0" radius-bottom="0.22" radius-top="0" height="0.2" color="#4A3728" segments-radial="4"></a-cone><a-light type="point" color="#FFAB40" intensity="1.3" distance="8"></a-light></a-entity>
+  <a-entity position=" 3 0 4"> <a-cylinder position="0 1 0" radius="0.07" height="2.0" color="#4A3728" segments-radial="6"></a-cylinder><a-box position="0 2.08 0" width="0.3" height="0.38" depth="0.3" color="#FFECB3" material="emissive:#FF6F00;emissiveIntensity:0.8;transparent:true;opacity:0.9"></a-box><a-cone position="0 2.33 0" radius-bottom="0.22" radius-top="0" height="0.2" color="#4A3728" segments-radial="4"></a-cone><a-light type="point" color="#FFAB40" intensity="1.3" distance="8"></a-light></a-entity>
+  <a-entity position="-3 0 -4"><a-cylinder position="0 1 0" radius="0.07" height="2.0" color="#4A3728" segments-radial="6"></a-cylinder><a-box position="0 2.08 0" width="0.3" height="0.38" depth="0.3" color="#FFECB3" material="emissive:#FF6F00;emissiveIntensity:0.8;transparent:true;opacity:0.9"></a-box><a-cone position="0 2.33 0" radius-bottom="0.22" radius-top="0" height="0.2" color="#4A3728" segments-radial="4"></a-cone><a-light type="point" color="#FFAB40" intensity="1.3" distance="8"></a-light></a-entity>
+  <a-entity position=" 3 0 -4"><a-cylinder position="0 1 0" radius="0.07" height="2.0" color="#4A3728" segments-radial="6"></a-cylinder><a-box position="0 2.08 0" width="0.3" height="0.38" depth="0.3" color="#FFECB3" material="emissive:#FF6F00;emissiveIntensity:0.8;transparent:true;opacity:0.9"></a-box><a-cone position="0 2.33 0" radius-bottom="0.22" radius-top="0" height="0.2" color="#4A3728" segments-radial="4"></a-cone><a-light type="point" color="#FFAB40" intensity="1.3" distance="8"></a-light></a-entity>
 
-// Sky bounce fill
-const skyLight = new THREE.DirectionalLight(0xBBDEFB, 0.55);
-skyLight.position.set(-20, 20, 15);
-scene.add(skyLight);
+  <!-- ══ TABLE + CHAIRS + ITEMS (0,0,−6.5) ══ -->
+  <a-entity position="0 0 -6.5">
+    <!-- tablecloth + top -->
+    <a-cylinder position="0 1.22 0" radius="1.38" height="0.05" color="#FFF0F5" segments-radial="14"></a-cylinder>
+    <a-cylinder position="0 1.16 0" radius="1.18" height="0.13" color="#C8966B" segments-radial="12" shadow="cast:true"></a-cylinder>
+    <a-cylinder position="0 0.55 0" radius="0.13" height="1.05" color="#8B5E3C" segments-radial="6"></a-cylinder>
+    <a-cylinder position="0 0.04 0" radius="0.50" height="0.07" color="#8B5E3C" segments-radial="8"></a-cylinder>
+    <!-- Chair south -->
+    <a-entity position="0 0 1.85" rotation="0 180 0">
+      <a-box position="0 0.55 0"    width="0.85" height="0.10" depth="0.85" color="#FFF9FC"></a-box>
+      <a-box position="0 0.98 -0.37" width="0.85" height="0.78" depth="0.09" color="#FFE4EE"></a-box>
+      <a-box position="0 1.37 -0.37" width="0.85" height="0.09" depth="0.09" color="#C9A87A"></a-box>
+      <a-cylinder position="-0.31 0.27 -0.31" radius="0.04" height="0.55" color="#C9A87A" segments-radial="5"></a-cylinder>
+      <a-cylinder position=" 0.31 0.27 -0.31" radius="0.04" height="0.55" color="#C9A87A" segments-radial="5"></a-cylinder>
+      <a-cylinder position="-0.31 0.27  0.31" radius="0.04" height="0.55" color="#C9A87A" segments-radial="5"></a-cylinder>
+      <a-cylinder position=" 0.31 0.27  0.31" radius="0.04" height="0.55" color="#C9A87A" segments-radial="5"></a-cylinder>
+    </a-entity>
+    <!-- Chair north -->
+    <a-entity position="0 0 -1.85" rotation="0 0 0">
+      <a-box position="0 0.55 0"    width="0.85" height="0.10" depth="0.85" color="#FFF9FC"></a-box>
+      <a-box position="0 0.98 -0.37" width="0.85" height="0.78" depth="0.09" color="#FFE4EE"></a-box>
+      <a-box position="0 1.37 -0.37" width="0.85" height="0.09" depth="0.09" color="#C9A87A"></a-box>
+      <a-cylinder position="-0.31 0.27 -0.31" radius="0.04" height="0.55" color="#C9A87A" segments-radial="5"></a-cylinder>
+      <a-cylinder position=" 0.31 0.27 -0.31" radius="0.04" height="0.55" color="#C9A87A" segments-radial="5"></a-cylinder>
+      <a-cylinder position="-0.31 0.27  0.31" radius="0.04" height="0.55" color="#C9A87A" segments-radial="5"></a-cylinder>
+      <a-cylinder position=" 0.31 0.27  0.31" radius="0.04" height="0.55" color="#C9A87A" segments-radial="5"></a-cylinder>
+    </a-entity>
+    <!-- Vase + rose -->
+    <a-cylinder position="0 1.46 0"  radius="0.09" height="0.30" color="#F8BBD0" segments-radial="8"></a-cylinder>
+    <a-cylinder position="0 1.62 0"  radius="0.025" height="0.22" color="#388E3C" segments-radial="4"></a-cylinder>
+    <a-sphere   position="0 1.78 0"  radius="0.13" color="#E53935" segments-height="6" segments-width="6"></a-sphere>
+    <!-- MILO TIN -->
+    <a-cylinder position="-0.55 1.38 0.1"  radius="0.17"  height="0.44" color="#1B5E20" segments-radial="10"></a-cylinder>
+    <a-cylinder position="-0.55 1.38 0.1"  radius="0.175" height="0.14" color="#F9A825" segments-radial="10"></a-cylinder>
+    <a-cylinder position="-0.55 1.615 0.1" radius="0.175" height="0.04" color="#FFEE58" segments-radial="10"></a-cylinder>
+    <!-- MILK TIN -->
+    <a-cylinder position="0.55 1.345 0.1" radius="0.14"  height="0.37" color="#FFF8E1" segments-radial="10"></a-cylinder>
+    <a-cylinder position="0.55 1.345 0.1" radius="0.145" height="0.13" color="#EF9A9A" segments-radial="10"></a-cylinder>
+    <!-- CUP 1 south -->
+    <a-cylinder position="0 1.175 -0.63" radius="0.155" height="0.03" color="#FFF3E0" segments-radial="8"></a-cylinder>
+    <a-cylinder position="0 1.27  -0.63" radius="0.10"  height="0.22" color="#FDF6F0" segments-radial="8"></a-cylinder>
+    <a-cylinder position="0 1.37  -0.63" radius="0.07"  height="0.04" color="#4E342E" segments-radial="8"></a-cylinder>
+    <!-- CUP 2 north -->
+    <a-cylinder position="0 1.175  0.63" radius="0.155" height="0.03" color="#FFF3E0" segments-radial="8"></a-cylinder>
+    <a-cylinder position="0 1.27   0.63" radius="0.10"  height="0.22" color="#FDF6F0" segments-radial="8"></a-cylinder>
+    <a-cylinder position="0 1.37   0.63" radius="0.07"  height="0.04" color="#4E342E" segments-radial="8"></a-cylinder>
+    <!-- Candle -->
+    <a-cylinder position="0.3 1.3  -0.3" radius="0.06" height="0.28" color="#FFF9C4" segments-radial="7"></a-cylinder>
+    <a-cone     position="0.3 1.5  -0.3" radius-bottom="0.045" radius-top="0" height="0.12" color="#FF8F00" material="shader:flat"></a-cone>
+    <!-- Wine glass 1 -->
+    <a-cylinder position="-0.38 1.44 -0.55" radius-top="0.12" radius-bottom="0.05" height="0.22" color="#E3F2FD" opacity="0.6"  transparent="true" segments-radial="8"></a-cylinder>
+    <a-cylinder position="-0.38 1.27 -0.55" radius="0.02" height="0.20" color="#E3F2FD" opacity="0.55" transparent="true" segments-radial="5"></a-cylinder>
+    <a-cylinder position="-0.38 1.18 -0.55" radius="0.09" height="0.02" color="#E3F2FD" opacity="0.6"  transparent="true" segments-radial="8"></a-cylinder>
+    <a-cylinder position="-0.38 1.38 -0.55" radius-top="0.10" radius-bottom="0.04" height="0.10" color="#7B1FA2" opacity="0.65" transparent="true" segments-radial="8"></a-cylinder>
+    <!-- Wine glass 2 -->
+    <a-cylinder position="0.38 1.44  0.55" radius-top="0.12" radius-bottom="0.05" height="0.22" color="#E3F2FD" opacity="0.6"  transparent="true" segments-radial="8"></a-cylinder>
+    <a-cylinder position="0.38 1.27  0.55" radius="0.02" height="0.20" color="#E3F2FD" opacity="0.55" transparent="true" segments-radial="5"></a-cylinder>
+    <a-cylinder position="0.38 1.18  0.55" radius="0.09" height="0.02" color="#E3F2FD" opacity="0.6"  transparent="true" segments-radial="8"></a-cylinder>
+    <a-cylinder position="0.38 1.38  0.55" radius-top="0.10" radius-bottom="0.04" height="0.10" color="#7B1FA2" opacity="0.65" transparent="true" segments-radial="8"></a-cylinder>
+  </a-entity>
 
-// Warm romantic glow inside pavilion
-const pavilionGlow = new THREE.PointLight(0xFFD54F, 3.0, 20);
-pavilionGlow.position.set(0, 3.5, -6);
-scene.add(pavilionGlow);
+  <!-- ROSE BUSHES -->
+  <a-entity position=" 6.8 0.42 -6">  <a-sphere radius="0.55" color="#2E7D32" scale="1 0.75 1" segments-height="5" segments-width="5"></a-sphere><a-sphere position=" 0.25 0.3  0.1"  radius="0.11" color="#E53935"></a-sphere><a-sphere position="-0.2  0.28 0.15" radius="0.10" color="#FF80AB"></a-sphere></a-entity>
+  <a-entity position="-6.8 0.42 -6">  <a-sphere radius="0.55" color="#2E7D32" scale="1 0.75 1" segments-height="5" segments-width="5"></a-sphere><a-sphere position=" 0.2  0.3  0.1"  radius="0.11" color="#FF80AB"></a-sphere><a-sphere position="-0.25 0.28 0.15" radius="0.10" color="#E53935"></a-sphere></a-entity>
+  <a-entity position="0 0.42 -13">     <a-sphere radius="0.55" color="#388E3C" scale="1 0.75 1" segments-height="5" segments-width="5"></a-sphere><a-sphere position=" 0.22 0.3 0.12"  radius="0.11" color="#E53935"></a-sphere><a-sphere position="-0.18 0.28 0.18" radius="0.10" color="#FF80AB"></a-sphere></a-entity>
+  <a-entity position=" 4.8 0.42 -10.8"><a-sphere radius="0.55" color="#2E7D32" scale="1 0.75 1" segments-height="5" segments-width="5"></a-sphere><a-sphere position=" 0.2  0.3  0.1"  radius="0.11" color="#E53935"></a-sphere><a-sphere position="-0.2  0.28 0.2"  radius="0.10" color="#FF80AB"></a-sphere></a-entity>
+  <a-entity position="-4.8 0.42 -10.8"><a-sphere radius="0.55" color="#388E3C" scale="1 0.75 1" segments-height="5" segments-width="5"></a-sphere><a-sphere position=" 0.2  0.3  0.1"  radius="0.10" color="#FF80AB"></a-sphere><a-sphere position="-0.2  0.28 0.2"  radius="0.11" color="#E53935"></a-sphere></a-entity>
 
-// Candle flicker light on table
-const candleLight = new THREE.PointLight(0xFF8F00, 2.2, 7);
-candleLight.position.set(0, 2.3, -6);
-scene.add(candleLight);
+  <!-- TREES (8) -->
+  <a-entity position="-9 0 -15">         <a-cylinder position="0 1.2 0" radius="0.26" height="2.4" color="#6D4C41" segments-radial="6"></a-cylinder><a-cone position="0 3.4 0" radius-bottom="2.5" radius-top="0" height="2.7" color="#1B5E20" segments-radial="7" shadow="cast:true"></a-cone><a-cone position="0 4.7 0" radius-bottom="1.9" radius-top="0" height="2.2" color="#2E7D32" segments-radial="7"></a-cone><a-cone position="0 5.9 0" radius-bottom="1.2" radius-top="0" height="1.9" color="#43A047" segments-radial="7"></a-cone></a-entity>
+  <a-entity position="10 0 -17" scale="1.2 1.2 1.2">  <a-cylinder position="0 1.2 0" radius="0.26" height="2.4" color="#5D4037" segments-radial="6"></a-cylinder><a-cone position="0 3.4 0" radius-bottom="2.5" radius-top="0" height="2.7" color="#2E7D32" segments-radial="7" shadow="cast:true"></a-cone><a-cone position="0 4.7 0" radius-bottom="1.9" radius-top="0" height="2.2" color="#388E3C" segments-radial="7"></a-cone><a-cone position="0 5.9 0" radius-bottom="1.2" radius-top="0" height="1.9" color="#43A047" segments-radial="7"></a-cone></a-entity>
+  <a-entity position="-16 0 -9" scale="0.9 0.9 0.9">  <a-cylinder position="0 1.2 0" radius="0.26" height="2.4" color="#6D4C41" segments-radial="6"></a-cylinder><a-cone position="0 3.4 0" radius-bottom="2.5" radius-top="0" height="2.7" color="#33691E" segments-radial="7" shadow="cast:true"></a-cone><a-cone position="0 4.7 0" radius-bottom="1.9" radius-top="0" height="2.2" color="#2E7D32" segments-radial="7"></a-cone><a-cone position="0 5.9 0" radius-bottom="1.2" radius-top="0" height="1.9" color="#43A047" segments-radial="7"></a-cone></a-entity>
+  <a-entity position="20 0 -12" scale="1.1 1.1 1.1">  <a-cylinder position="0 1.2 0" radius="0.26" height="2.4" color="#5D4037" segments-radial="6"></a-cylinder><a-cone position="0 3.4 0" radius-bottom="2.5" radius-top="0" height="2.7" color="#2E7D32" segments-radial="7" shadow="cast:true"></a-cone><a-cone position="0 4.7 0" radius-bottom="1.9" radius-top="0" height="2.2" color="#388E3C" segments-radial="7"></a-cone><a-cone position="0 5.9 0" radius-bottom="1.2" radius-top="0" height="1.9" color="#43A047" segments-radial="7"></a-cone></a-entity>
+  <a-entity position="-21 0 -20" scale="1.25 1.25 1.25"><a-cylinder position="0 1.2 0" radius="0.26" height="2.4" color="#6D4C41" segments-radial="6"></a-cylinder><a-cone position="0 3.4 0" radius-bottom="2.5" radius-top="0" height="2.7" color="#1B5E20" segments-radial="7" shadow="cast:true"></a-cone><a-cone position="0 4.7 0" radius-bottom="1.9" radius-top="0" height="2.2" color="#2E7D32" segments-radial="7"></a-cone><a-cone position="0 5.9 0" radius-bottom="1.2" radius-top="0" height="1.9" color="#43A047" segments-radial="7"></a-cone></a-entity>
+  <a-entity position="6 0 -24" scale="0.95 0.95 0.95">  <a-cylinder position="0 1.2 0" radius="0.26" height="2.4" color="#5D4037" segments-radial="6"></a-cylinder><a-cone position="0 3.4 0" radius-bottom="2.5" radius-top="0" height="2.7" color="#2E7D32" segments-radial="7" shadow="cast:true"></a-cone><a-cone position="0 4.7 0" radius-bottom="1.9" radius-top="0" height="2.2" color="#388E3C" segments-radial="7"></a-cone><a-cone position="0 5.9 0" radius-bottom="1.2" radius-top="0" height="1.9" color="#43A047" segments-radial="7"></a-cone></a-entity>
+  <a-entity position="28 0 4" scale="1.15 1.15 1.15">   <a-cylinder position="0 1.2 0" radius="0.26" height="2.4" color="#6D4C41" segments-radial="6"></a-cylinder><a-cone position="0 3.4 0" radius-bottom="2.5" radius-top="0" height="2.7" color="#33691E" segments-radial="7" shadow="cast:true"></a-cone><a-cone position="0 4.7 0" radius-bottom="1.9" radius-top="0" height="2.2" color="#2E7D32" segments-radial="7"></a-cone><a-cone position="0 5.9 0" radius-bottom="1.2" radius-top="0" height="1.9" color="#43A047" segments-radial="7"></a-cone></a-entity>
+  <a-entity position="-28 0 7" scale="1.1 1.1 1.1">    <a-cylinder position="0 1.2 0" radius="0.26" height="2.4" color="#5D4037" segments-radial="6"></a-cylinder><a-cone position="0 3.4 0" radius-bottom="2.5" radius-top="0" height="2.7" color="#2E7D32" segments-radial="7" shadow="cast:true"></a-cone><a-cone position="0 4.7 0" radius-bottom="1.9" radius-top="0" height="2.2" color="#388E3C" segments-radial="7"></a-cone><a-cone position="0 5.9 0" radius-bottom="1.2" radius-top="0" height="1.9" color="#43A047" segments-radial="7"></a-cone></a-entity>
 
-// Lantern warm points along path
-const lanternLights = [];
-[[-3,1.9,12],[3,1.9,12],[-3,1.9,4],[3,1.9,4],[-3,1.9,-4],[3,1.9,-4]].forEach(([x,y,z])=>{
-  const pl=new THREE.PointLight(0xFFAB40,1.8,10);
-  pl.position.set(x,y,z); scene.add(pl); lanternLights.push(pl);
-});
+  <!-- FLOWERS — wind sway (rotate Z ±n deg) -->
+  <a-entity position="-5 0 5"    animation="property:rotation;from:0 0 -9;to:0 0 9;dur:1400;dir:alternate;loop:true;easing:easeInOutSine">              <a-cylinder position="0 0.175 0" radius="0.03" height="0.35" color="#66BB6A" segments-radial="4"></a-cylinder><a-sphere position="0 0.38 0" radius="0.13" color="#FF80AB" segments-height="5" segments-width="5"></a-sphere></a-entity>
+  <a-entity position="5 0 8"     animation="property:rotation;from:0 0 -11;to:0 0 11;dur:1200;dir:alternate;loop:true;easing:easeInOutSine;delay:200">   <a-cylinder position="0 0.175 0" radius="0.03" height="0.35" color="#66BB6A" segments-radial="4"></a-cylinder><a-sphere position="0 0.38 0" radius="0.13" color="#FFEE58" segments-height="5" segments-width="5"></a-sphere></a-entity>
+  <a-entity position="-8 0 2"    animation="property:rotation;from:0 0 -8;to:0 0 8;dur:1600;dir:alternate;loop:true;easing:easeInOutSine;delay:100">    <a-cylinder position="0 0.175 0" radius="0.03" height="0.35" color="#66BB6A" segments-radial="4"></a-cylinder><a-sphere position="0 0.38 0" radius="0.13" color="#CE93D8" segments-height="5" segments-width="5"></a-sphere></a-entity>
+  <a-entity position="7 0 -2"    animation="property:rotation;from:0 0 -10;to:0 0 10;dur:1100;dir:alternate;loop:true;easing:easeInOutSine;delay:350">   <a-cylinder position="0 0.175 0" radius="0.03" height="0.35" color="#66BB6A" segments-radial="4"></a-cylinder><a-sphere position="0 0.38 0" radius="0.13" color="#FF7043" segments-height="5" segments-width="5"></a-sphere></a-entity>
+  <a-entity position="-3 0 14"   animation="property:rotation;from:0 0 -9;to:0 0 9;dur:1500;dir:alternate;loop:true;easing:easeInOutSine;delay:500">    <a-cylinder position="0 0.175 0" radius="0.03" height="0.35" color="#66BB6A" segments-radial="4"></a-cylinder><a-sphere position="0 0.38 0" radius="0.13" color="#80CBC4" segments-height="5" segments-width="5"></a-sphere></a-entity>
+  <a-entity position="4 0 15"    animation="property:rotation;from:0 0 -12;to:0 0 12;dur:1300;dir:alternate;loop:true;easing:easeInOutSine;delay:150">   <a-cylinder position="0 0.175 0" radius="0.03" height="0.35" color="#66BB6A" segments-radial="4"></a-cylinder><a-sphere position="0 0.38 0" radius="0.13" color="#FFCC02" segments-height="5" segments-width="5"></a-sphere></a-entity>
+  <a-entity position="-6 0 -4"   animation="property:rotation;from:0 0 -10;to:0 0 10;dur:1250;dir:alternate;loop:true;easing:easeInOutSine;delay:400">   <a-cylinder position="0 0.175 0" radius="0.03" height="0.35" color="#66BB6A" segments-radial="4"></a-cylinder><a-sphere position="0 0.38 0" radius="0.13" color="#FF80AB" segments-height="5" segments-width="5"></a-sphere></a-entity>
+  <a-entity position="11 0 5"    animation="property:rotation;from:0 0 -8;to:0 0 8;dur:1450;dir:alternate;loop:true;easing:easeInOutSine;delay:300">    <a-cylinder position="0 0.175 0" radius="0.03" height="0.35" color="#66BB6A" segments-radial="4"></a-cylinder><a-sphere position="0 0.38 0" radius="0.13" color="#FFEE58" segments-height="5" segments-width="5"></a-sphere></a-entity>
+  <a-entity position="-12 0 4"   animation="property:rotation;from:0 0 -11;to:0 0 11;dur:1350;dir:alternate;loop:true;easing:easeInOutSine;delay:220">   <a-cylinder position="0 0.175 0" radius="0.03" height="0.35" color="#66BB6A" segments-radial="4"></a-cylinder><a-sphere position="0 0.38 0" radius="0.13" color="#CE93D8" segments-height="5" segments-width="5"></a-sphere></a-entity>
+  <a-entity position="8 0 12"    animation="property:rotation;from:0 0 -9;to:0 0 9;dur:1550;dir:alternate;loop:true;easing:easeInOutSine;delay:470">    <a-cylinder position="0 0.175 0" radius="0.03" height="0.35" color="#66BB6A" segments-radial="4"></a-cylinder><a-sphere position="0 0.38 0" radius="0.13" color="#FF7043" segments-height="5" segments-width="5"></a-sphere></a-entity>
+  <a-entity position="-4 0 -9"   animation="property:rotation;from:0 0 -10;to:0 0 10;dur:1180;dir:alternate;loop:true;easing:easeInOutSine;delay:80">    <a-cylinder position="0 0.175 0" radius="0.03" height="0.35" color="#66BB6A" segments-radial="4"></a-cylinder><a-sphere position="0 0.38 0" radius="0.13" color="#80CBC4" segments-height="5" segments-width="5"></a-sphere></a-entity>
+  <a-entity position="13 0 -5"   animation="property:rotation;from:0 0 -9;to:0 0 9;dur:1420;dir:alternate;loop:true;easing:easeInOutSine;delay:600">    <a-cylinder position="0 0.175 0" radius="0.03" height="0.35" color="#66BB6A" segments-radial="4"></a-cylinder><a-sphere position="0 0.38 0" radius="0.13" color="#FF80AB" segments-height="5" segments-width="5"></a-sphere></a-entity>
 
-// Coloured fairy lights around pavilion perimeter
-const fairyColors=[0xFF80AB,0xFFD54F,0x80DEEA,0xA5D6A7,0xCE93D8];
-for(let i=0;i<5;i++){
-  const a=(i/5)*Math.PI*2;
-  const fl=new THREE.PointLight(fairyColors[i],1.2,8);
-  fl.position.set(Math.cos(a)*5,2.8,-6+Math.sin(a)*5);
-  scene.add(fl);
-}
+  <!-- GRASS SHOOTS — same sway, thin planes -->
+  <a-entity position="-7 0.17 6"     animation="property:rotation;from:0 0 -15;to:0 0 15;dur:900;dir:alternate;loop:true;easing:easeInOutSine">            <a-plane width="0.07" height="0.34" color="#7CB342" side="double"></a-plane></a-entity>
+  <a-entity position="-6.6 0.17 6.4" animation="property:rotation;from:0 0 -13;to:0 0 13;dur:1050;dir:alternate;loop:true;easing:easeInOutSine;delay:120"><a-plane width="0.07" height="0.34" color="#8BC34A" side="double" rotation="0 50 0"></a-plane></a-entity>
+  <a-entity position="6 0.17 9"      animation="property:rotation;from:0 0 -14;to:0 0 14;dur:850;dir:alternate;loop:true;easing:easeInOutSine;delay:200">   <a-plane width="0.07" height="0.34" color="#7CB342" side="double"></a-plane></a-entity>
+  <a-entity position="6.4 0.17 9.4"  animation="property:rotation;from:0 0 -12;to:0 0 12;dur:970;dir:alternate;loop:true;easing:easeInOutSine;delay:80">    <a-plane width="0.07" height="0.34" color="#558B2F" side="double" rotation="0 65 0"></a-plane></a-entity>
+  <a-entity position="-10 0.17 1"    animation="property:rotation;from:0 0 -15;to:0 0 15;dur:1000;dir:alternate;loop:true;easing:easeInOutSine;delay:330">  <a-plane width="0.07" height="0.34" color="#7CB342" side="double"></a-plane></a-entity>
+  <a-entity position="-10.4 0.17 1.4" animation="property:rotation;from:0 0 -13;to:0 0 13;dur:880;dir:alternate;loop:true;easing:easeInOutSine;delay:450"> <a-plane width="0.07" height="0.34" color="#8BC34A" side="double" rotation="0 30 0"></a-plane></a-entity>
+  <a-entity position="9 0.17 -1"     animation="property:rotation;from:0 0 -14;to:0 0 14;dur:1100;dir:alternate;loop:true;easing:easeInOutSine;delay:180">   <a-plane width="0.07" height="0.34" color="#7CB342" side="double"></a-plane></a-entity>
+  <a-entity position="9.5 0.17 -1.4" animation="property:rotation;from:0 0 -11;to:0 0 11;dur:940;dir:alternate;loop:true;easing:easeInOutSine;delay:550">   <a-plane width="0.07" height="0.34" color="#558B2F" side="double" rotation="0 80 0"></a-plane></a-entity>
+  <a-entity position="2 0.17 17"     animation="property:rotation;from:0 0 -14;to:0 0 14;dur:960;dir:alternate;loop:true;easing:easeInOutSine;delay:70">    <a-plane width="0.07" height="0.34" color="#7CB342" side="double"></a-plane></a-entity>
+  <a-entity position="-2.5 0.17 16"  animation="property:rotation;from:0 0 -13;to:0 0 13;dur:1020;dir:alternate;loop:true;easing:easeInOutSine;delay:290">  <a-plane width="0.07" height="0.34" color="#8BC34A" side="double" rotation="0 55 0"></a-plane></a-entity>
+  <a-entity position="14 0.17 2"     animation="property:rotation;from:0 0 -15;to:0 0 15;dur:875;dir:alternate;loop:true;easing:easeInOutSine;delay:410">    <a-plane width="0.07" height="0.34" color="#7CB342" side="double"></a-plane></a-entity>
+  <a-entity position="-14 0.17 -3"   animation="property:rotation;from:0 0 -12;to:0 0 12;dur:1080;dir:alternate;loop:true;easing:easeInOutSine;delay:260">  <a-plane width="0.07" height="0.34" color="#558B2F" side="double" rotation="0 70 0"></a-plane></a-entity>
+  <a-entity position="3 0.17 -10"    animation="property:rotation;from:0 0 -14;to:0 0 14;dur:930;dir:alternate;loop:true;easing:easeInOutSine;delay:340">   <a-plane width="0.07" height="0.34" color="#7CB342" side="double"></a-plane></a-entity>
+  <a-entity position="-3 0.17 -10"   animation="property:rotation;from:0 0 -13;to:0 0 13;dur:1060;dir:alternate;loop:true;easing:easeInOutSine;delay:190">  <a-plane width="0.07" height="0.34" color="#8BC34A" side="double" rotation="0 40 0"></a-plane></a-entity>
+  <a-entity position="17 0.17 8"     animation="property:rotation;from:0 0 -15;to:0 0 15;dur:890;dir:alternate;loop:true;easing:easeInOutSine;delay:520">    <a-plane width="0.07" height="0.34" color="#7CB342" side="double"></a-plane></a-entity>
+  <a-entity position="-17 0.17 5"    animation="property:rotation;from:0 0 -12;to:0 0 12;dur:1010;dir:alternate;loop:true;easing:easeInOutSine;delay:380">  <a-plane width="0.07" height="0.34" color="#558B2F" side="double" rotation="0 60 0"></a-plane></a-entity>
 
-// ═══════════════════════════════════════════════════════════════
-//  TERRAIN
-// ═══════════════════════════════════════════════════════════════
-function makeTerrain(){
-  const geo=new THREE.CircleGeometry(95,44);
-  const pos=geo.attributes.position;
-  for(let i=1;i<pos.count;i++){
-    pos.setY(i,(Math.random()-0.5)*0.5);
-    pos.setZ(i,pos.getZ(i)+(Math.random()-0.5)*0.4);
-  }
-  geo.computeVertexNormals();
-  const mesh=new THREE.Mesh(geo,new THREE.MeshLambertMaterial({color:0x56AB2F}));
-  mesh.rotation.x=-Math.PI/2; mesh.receiveShadow=true; return mesh;
-}
-scene.add(makeTerrain());
+  <!-- BUTTERFLIES (5) — orbit + flapping wings -->
+  <a-entity position="-3 1.8 8"  animation__m="property:position;from:-3 1.8 8;to:2 2.3 6;dur:5000;dir:alternate;loop:true;easing:easeInOutSine">
+    <a-circle position=" 0.18 0 0" radius="0.30" color="#FCE4EC" side="double" animation="property:rotation;from:0 0 0;to:0 45 0;dur:300;dir:alternate;loop:true"></a-circle>
+    <a-circle position="-0.18 0 0" radius="0.30" color="#FCE4EC" side="double" animation="property:rotation;from:0 0 0;to:0 -45 0;dur:300;dir:alternate;loop:true"></a-circle>
+  </a-entity>
+  <a-entity position="5 2.1 10"  animation__m="property:position;from:5 2.1 10;to:-2 1.7 13;dur:6500;dir:alternate;loop:true;easing:easeInOutSine">
+    <a-circle position=" 0.18 0 0" radius="0.30" color="#E8F5E9" side="double" animation="property:rotation;from:0 0 0;to:0 45 0;dur:340;dir:alternate;loop:true"></a-circle>
+    <a-circle position="-0.18 0 0" radius="0.30" color="#E8F5E9" side="double" animation="property:rotation;from:0 0 0;to:0 -45 0;dur:340;dir:alternate;loop:true"></a-circle>
+  </a-entity>
+  <a-entity position="8 1.6 3"   animation__m="property:position;from:8 1.6 3;to:4 2.2 7;dur:4800;dir:alternate;loop:true;easing:easeInOutSine">
+    <a-circle position=" 0.18 0 0" radius="0.30" color="#FFF9C4" side="double" animation="property:rotation;from:0 0 0;to:0 45 0;dur:280;dir:alternate;loop:true"></a-circle>
+    <a-circle position="-0.18 0 0" radius="0.30" color="#FFF9C4" side="double" animation="property:rotation;from:0 0 0;to:0 -45 0;dur:280;dir:alternate;loop:true"></a-circle>
+  </a-entity>
+  <a-entity position="-7 2.3 -2" animation__m="property:position;from:-7 2.3 -2;to:-3 1.9 5;dur:7200;dir:alternate;loop:true;easing:easeInOutSine">
+    <a-circle position=" 0.18 0 0" radius="0.30" color="#CE93D8" side="double" animation="property:rotation;from:0 0 0;to:0 45 0;dur:310;dir:alternate;loop:true"></a-circle>
+    <a-circle position="-0.18 0 0" radius="0.30" color="#CE93D8" side="double" animation="property:rotation;from:0 0 0;to:0 -45 0;dur:310;dir:alternate;loop:true"></a-circle>
+  </a-entity>
+  <a-entity position="2 2.0 -4"  animation__m="property:position;from:2 2 -4;to:-5 2.4 2;dur:5500;dir:alternate;loop:true;easing:easeInOutSine">
+    <a-circle position=" 0.18 0 0" radius="0.30" color="#FFE0B2" side="double" animation="property:rotation;from:0 0 0;to:0 45 0;dur:295;dir:alternate;loop:true"></a-circle>
+    <a-circle position="-0.18 0 0" radius="0.30" color="#FFE0B2" side="double" animation="property:rotation;from:0 0 0;to:0 -45 0;dur:295;dir:alternate;loop:true"></a-circle>
+  </a-entity>
 
-// ═══════════════════════════════════════════════════════════════
-//  PATHWAY
-// ═══════════════════════════════════════════════════════════════
-(function(){
-  const g=new THREE.Group();
-  const mat=new THREE.MeshLambertMaterial({color:0xD7CCC8});
-  for(let i=0;i<15;i++){
-    const w=1.9+Math.random()*0.15,d=1.0+Math.random()*0.12;
-    const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,0.09,d),mat);
-    mesh.position.set((Math.random()-0.5)*0.15,0.045,21-i*2.8);
-    mesh.rotation.y=(Math.random()-0.5)*0.07;
-    mesh.receiveShadow=true; mesh.castShadow=true; g.add(mesh);
-  }
-  scene.add(g);
-})();
+  <!-- CLOUDS (5 drifting clusters) -->
+  <a-entity position="-35 48 -90"  animation="property:position;from:-35 48 -90;to:40 48 -90;dur:38000;dir:alternate;loop:true;easing:linear">
+    <a-dodecahedron radius="3.2" color="#FFFFFF" opacity="0.92" transparent="true"></a-dodecahedron>
+    <a-dodecahedron position="-3.1 -0.4 0" radius="2.2" color="#FFFFFF" opacity="0.89" transparent="true"></a-dodecahedron>
+    <a-dodecahedron position=" 3.1 -0.5 0" radius="2.3" color="#FFFFFF" opacity="0.87" transparent="true"></a-dodecahedron>
+    <a-dodecahedron position="-1.5 1.1 0.3" radius="1.7" color="#FFFFFF" opacity="0.84" transparent="true"></a-dodecahedron>
+    <a-dodecahedron position=" 1.5 1.0 -0.2" radius="1.8" color="#FFFFFF" opacity="0.84" transparent="true"></a-dodecahedron>
+  </a-entity>
+  <a-entity position="30 56 -118" animation="property:position;from:30 56 -118;to:-30 56 -118;dur:46000;dir:alternate;loop:true;easing:linear">
+    <a-dodecahedron radius="2.9" color="#FFFFFF" opacity="0.90" transparent="true"></a-dodecahedron>
+    <a-dodecahedron position="-2.9 -0.4 0" radius="2.1" color="#FFFFFF" opacity="0.88" transparent="true"></a-dodecahedron>
+    <a-dodecahedron position=" 2.9 -0.5 0" radius="2.2" color="#FFFFFF" opacity="0.86" transparent="true"></a-dodecahedron>
+  </a-entity>
+  <a-entity position="65 43 -82"  animation="property:position;from:65 43 -82;to:-20 43 -82;dur:52000;dir:alternate;loop:true;easing:linear">
+    <a-dodecahedron radius="3.4" color="#FFFFFF" opacity="0.93" transparent="true"></a-dodecahedron>
+    <a-dodecahedron position="-3.3 -0.5 0" radius="2.4" color="#FFFFFF" opacity="0.90" transparent="true"></a-dodecahedron>
+    <a-dodecahedron position=" 3.3 -0.4 0" radius="2.5" color="#FFFFFF" opacity="0.88" transparent="true"></a-dodecahedron>
+    <a-dodecahedron position="0 1.4 0.4" radius="1.9" color="#FFFFFF" opacity="0.85" transparent="true"></a-dodecahedron>
+  </a-entity>
+  <a-entity position="-62 51 -72" animation="property:position;from:-62 51 -72;to:25 51 -72;dur:48000;dir:alternate;loop:true;easing:linear">
+    <a-dodecahedron radius="2.7" color="#FFFFFF" opacity="0.89" transparent="true"></a-dodecahedron>
+    <a-dodecahedron position="-2.7 -0.3 0" radius="1.9" color="#FFFFFF" opacity="0.86" transparent="true"></a-dodecahedron>
+    <a-dodecahedron position=" 2.7 -0.4 0" radius="2.0" color="#FFFFFF" opacity="0.84" transparent="true"></a-dodecahedron>
+  </a-entity>
+  <a-entity position="10 36 -62"  animation="property:position;from:10 36 -62;to:-45 38 -62;dur:32000;dir:alternate;loop:true;easing:linear">
+    <a-dodecahedron radius="2.5" color="#FFFFFF" opacity="0.88" transparent="true"></a-dodecahedron>
+    <a-dodecahedron position="-2.5 -0.3 0" radius="1.8" color="#FFFFFF" opacity="0.85" transparent="true"></a-dodecahedron>
+    <a-dodecahedron position=" 2.5 -0.4 0" radius="1.9" color="#FFFFFF" opacity="0.83" transparent="true"></a-dodecahedron>
+  </a-entity>
 
-// ═══════════════════════════════════════════════════════════════
-//  LANTERN POSTS
-// ═══════════════════════════════════════════════════════════════
-function makeLanternPost(x,z){
-  const g=new THREE.Group();
-  const poleMat=new THREE.MeshLambertMaterial({color:0x4A3728});
-  const pole=new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.09,2.0,6),poleMat);
-  pole.position.set(0,1.0,0); g.add(pole);
-  const lMat=new THREE.MeshLambertMaterial({color:0xFFECB3,transparent:true,opacity:0.88,emissive:new THREE.Color(0xFF8F00),emissiveIntensity:0.7});
-  const lantern=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.38,0.3),lMat);
-  lantern.position.set(0,2.05,0); g.add(lantern);
-  const cap=new THREE.Mesh(new THREE.ConeGeometry(0.22,0.2,4),poleMat);
-  cap.position.set(0,2.3,0); cap.rotation.set(0,Math.PI/4,0); g.add(cap);
-  g.position.set(x,0,z); g.castShadow=true; return g;
-}
-[[-3,12],[3,12],[-3,4],[3,4],[-3,-4],[3,-4]].forEach(([x,z])=>scene.add(makeLanternPost(x,z)));
+  <!-- BIRDS (6) — V-shape wings crossing sky -->
+  <a-entity position="-85 32 -55"  animation="property:position;from:-85 32 -55;to:85 32 -55;dur:19000;loop:true;easing:linear">
+    <a-triangle vertex-a="0 0 0" vertex-b="-1.4 0.5 0" vertex-c="-0.7 0 0" color="#37474F" side="double" animation="property:rotation;from:0 0 0;to:24 0 0;dur:400;dir:alternate;loop:true"></a-triangle>
+    <a-triangle vertex-a="0 0 0" vertex-b=" 1.4 0.5 0" vertex-c=" 0.7 0 0" color="#37474F" side="double" animation="property:rotation;from:0 0 0;to:-24 0 0;dur:400;dir:alternate;loop:true"></a-triangle>
+  </a-entity>
+  <a-entity position="-85 39 -72"  animation="property:position;from:-85 39 -72;to:85 39 -72;dur:24000;loop:true;easing:linear;delay:5000">
+    <a-triangle vertex-a="0 0 0" vertex-b="-1.3 0.4 0" vertex-c="-0.65 0 0" color="#455A64" side="double" animation="property:rotation;from:0 0 0;to:22 0 0;dur:440;dir:alternate;loop:true"></a-triangle>
+    <a-triangle vertex-a="0 0 0" vertex-b=" 1.3 0.4 0" vertex-c=" 0.65 0 0" color="#455A64" side="double" animation="property:rotation;from:0 0 0;to:-22 0 0;dur:440;dir:alternate;loop:true"></a-triangle>
+  </a-entity>
+  <a-entity position="85 28 -46"   animation="property:position;from:85 28 -46;to:-85 28 -46;dur:26000;loop:true;easing:linear;delay:9000">
+    <a-triangle vertex-a="0 0 0" vertex-b="-1.2 0.4 0" vertex-c="-0.6 0 0" color="#37474F" side="double" animation="property:rotation;from:0 0 0;to:20 0 0;dur:380;dir:alternate;loop:true"></a-triangle>
+    <a-triangle vertex-a="0 0 0" vertex-b=" 1.2 0.4 0" vertex-c=" 0.6 0 0" color="#37474F" side="double" animation="property:rotation;from:0 0 0;to:-20 0 0;dur:380;dir:alternate;loop:true"></a-triangle>
+  </a-entity>
+  <a-entity position="-85 43 -88"  animation="property:position;from:-85 43 -88;to:85 43 -88;dur:31000;loop:true;easing:linear;delay:13000">
+    <a-triangle vertex-a="0 0 0" vertex-b="-1.5 0.5 0" vertex-c="-0.75 0 0" color="#546E7A" side="double" animation="property:rotation;from:0 0 0;to:28 0 0;dur:420;dir:alternate;loop:true"></a-triangle>
+    <a-triangle vertex-a="0 0 0" vertex-b=" 1.5 0.5 0" vertex-c=" 0.75 0 0" color="#546E7A" side="double" animation="property:rotation;from:0 0 0;to:-28 0 0;dur:420;dir:alternate;loop:true"></a-triangle>
+  </a-entity>
+  <a-entity position="85 36 -62"   animation="property:position;from:85 36 -62;to:-85 36 -62;dur:21000;loop:true;easing:linear;delay:2500">
+    <a-triangle vertex-a="0 0 0" vertex-b="-1.1 0.36 0" vertex-c="-0.55 0 0" color="#37474F" side="double" animation="property:rotation;from:0 0 0;to:18 0 0;dur:360;dir:alternate;loop:true"></a-triangle>
+    <a-triangle vertex-a="0 0 0" vertex-b=" 1.1 0.36 0" vertex-c=" 0.55 0 0" color="#37474F" side="double" animation="property:rotation;from:0 0 0;to:-18 0 0;dur:360;dir:alternate;loop:true"></a-triangle>
+  </a-entity>
+  <a-entity position="-85 52 -105" animation="property:position;from:-85 52 -105;to:85 52 -105;dur:35000;loop:true;easing:linear;delay:7000">
+    <a-triangle vertex-a="0 0 0" vertex-b="-1.0 0.33 0" vertex-c="-0.5 0 0" color="#455A64" side="double" animation="property:rotation;from:0 0 0;to:16 0 0;dur:500;dir:alternate;loop:true"></a-triangle>
+    <a-triangle vertex-a="0 0 0" vertex-b=" 1.0 0.33 0" vertex-c=" 0.5 0 0" color="#455A64" side="double" animation="property:rotation;from:0 0 0;to:-16 0 0;dur:500;dir:alternate;loop:true"></a-triangle>
+  </a-entity>
 
-// ═══════════════════════════════════════════════════════════════
-//  PAVILION  (centre at world 0, 0, -6)
-// ═══════════════════════════════════════════════════════════════
-const PX=0, PZ=-6;
-(function(){
-  const g=new THREE.Group();
-  // base platform
-  const baseM=new THREE.MeshLambertMaterial({color:0xF5F0E8});
-  const base=new THREE.Mesh(new THREE.CylinderGeometry(4.4,4.7,0.42,12),baseM);
-  base.position.y=0.21; base.receiveShadow=true; base.castShadow=true; g.add(base);
-  // step ring
-  const step=new THREE.Mesh(new THREE.CylinderGeometry(4.8,4.9,0.15,12),new THREE.MeshLambertMaterial({color:0xECE5DA}));
-  step.position.y=0.075; g.add(step);
-  // roof
-  const roofM=new THREE.MeshLambertMaterial({color:0x2E7D32});
-  const roof=new THREE.Mesh(new THREE.CylinderGeometry(0.3,5.1,2.5,6),roofM);
-  roof.position.y=4.65; roof.castShadow=true; g.add(roof);
-  // roof cap
-  const cap=new THREE.Mesh(new THREE.ConeGeometry(0.65,0.85,6),new THREE.MeshLambertMaterial({color:0x1B5E20}));
-  cap.position.y=5.95; g.add(cap);
-  // gold finial
-  const finial=new THREE.Mesh(new THREE.SphereGeometry(0.18,6,4),new THREE.MeshLambertMaterial({color:0xFFD700}));
-  finial.position.y=6.65; g.add(finial);
-  // pillars
-  const pilM=new THREE.MeshLambertMaterial({color:0xFAFAFA});
-  for(let i=0;i<6;i++){
-    const a=(i/6)*Math.PI*2;
-    const pil=new THREE.Mesh(new THREE.CylinderGeometry(0.21,0.21,4.2,8),pilM);
-    pil.position.set(Math.cos(a)*3.9,2.31,Math.sin(a)*3.9); pil.castShadow=true; g.add(pil);
-  }
-  // rose garland on pillars
-  const garM=new THREE.MeshBasicMaterial({color:0xFF80AB});
-  for(let i=0;i<6;i++){
-    const a=(i/6)*Math.PI*2;
-    const ring=new THREE.Mesh(new THREE.TorusGeometry(0.28,0.06,4,8),garM);
-    ring.position.set(Math.cos(a)*3.9,3.9,Math.sin(a)*3.9); ring.rotation.x=Math.PI/2; g.add(ring);
-  }
-  // string light bulbs ring
-  const bMat=new THREE.MeshBasicMaterial({color:0xFFECB3});
-  for(let i=0;i<28;i++){
-    const a=(i/28)*Math.PI*2;
-    const b=new THREE.Mesh(new THREE.SphereGeometry(0.09,4,3),bMat);
-    b.position.set(Math.cos(a)*4.0,3.55,Math.sin(a)*4.0); g.add(b);
-  }
-  g.position.set(PX,0,PZ); scene.add(g);
-})();
+  <!-- CAMERA -->
+  <a-entity id="rig" position="0 1.6 20">
+    <a-camera wasd-controls="acceleration:25" look-controls></a-camera>
+  </a-entity>
 
-// ═══════════════════════════════════════════════════════════════
-//  DATE TABLE & CHAIRS  — perfectly centred inside pavilion
-// ═══════════════════════════════════════════════════════════════
-(function(){
-  const g=new THREE.Group();
-  const TABLE_TOP_Y = 1.16; // world Y of table surface
-
-  // tablecloth
-  const tablecloth=new THREE.Mesh(new THREE.CylinderGeometry(1.38,1.38,0.04,14),new THREE.MeshLambertMaterial({color:0xFFF0F5}));
-  tablecloth.position.set(0,TABLE_TOP_Y+0.02,0); g.add(tablecloth);
-  // tabletop wood
-  const top=new THREE.Mesh(new THREE.CylinderGeometry(1.18,1.18,0.13,12),new THREE.MeshLambertMaterial({color:0xC8966B}));
-  top.position.y=TABLE_TOP_Y; top.castShadow=true; g.add(top);
-  // pedestal leg
-  const legM=new THREE.MeshLambertMaterial({color:0x8B5E3C});
-  const leg1=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.18,1.03,6),legM);
-  leg1.position.set(0,0.515,0); g.add(leg1);
-  const leg2=new THREE.Mesh(new THREE.CylinderGeometry(0.5,0.5,0.07,8),legM);
-  leg2.position.set(0,0.035,0); g.add(leg2);
-
-  // ── CHAIRS  — exactly symmetric, 180° apart ───────────────
-  function makeChair(angle){
-    const cg=new THREE.Group();
-    const sM=new THREE.MeshLambertMaterial({color:0xFFF9FC});
-    const bkM=new THREE.MeshLambertMaterial({color:0xFFE4EE});
-    const frM=new THREE.MeshLambertMaterial({color:0xC9A87A});
-    const seat=new THREE.Mesh(new THREE.BoxGeometry(0.85,0.1,0.85),sM);
-    seat.position.set(0,0.55,0); cg.add(seat);
-    const back=new THREE.Mesh(new THREE.BoxGeometry(0.85,0.78,0.09),bkM);
-    back.position.set(0,0.98,-0.37); cg.add(back);
-    const fr=new THREE.Mesh(new THREE.BoxGeometry(0.85,0.09,0.09),frM);
-    fr.position.set(0,1.37,-0.37); cg.add(fr);
-    for(let lx of[-0.31,0.31]) for(let lz of[-0.31,0.31]){
-      const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,0.55,5),frM);
-      leg.position.set(lx,0.275,lz); cg.add(leg);
-    }
-    const dist=1.2;
-    cg.position.set(Math.sin(angle)*dist, 0, Math.cos(angle)*dist);
-    cg.rotation.y=angle;
-    return cg;
-  }
-  g.add(makeChair(0));         // south chair (near viewer)
-  g.add(makeChair(Math.PI));   // north chair (far side)
-
-  // ── TABLE ITEMS ──────────────────────────────────────────────
-  const Y=TABLE_TOP_Y;
-
-  // Rose vase centrepiece
-  const vase=new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.13,0.3,8),new THREE.MeshLambertMaterial({color:0xF8BBD0}));
-  vase.position.set(0,Y+0.15,0); g.add(vase);
-  const vaseStem=new THREE.Mesh(new THREE.CylinderGeometry(0.025,0.025,0.22,4),new THREE.MeshLambertMaterial({color:0x388E3C}));
-  vaseStem.position.set(0,Y+0.26,0); g.add(vaseStem);
-  const rose=new THREE.Mesh(new THREE.SphereGeometry(0.13,6,5),new THREE.MeshLambertMaterial({color:0xE53935}));
-  rose.position.set(0,Y+0.43,0); g.add(rose);
-
-  // Milo tin (left)
-  const miloBody=new THREE.Mesh(new THREE.CylinderGeometry(0.17,0.17,0.44,10),new THREE.MeshLambertMaterial({color:0x1B5E20}));
-  miloBody.position.set(-0.55,Y+0.22,0.1); g.add(miloBody);
-  const miloLabel=new THREE.Mesh(new THREE.CylinderGeometry(0.175,0.175,0.14,10),new THREE.MeshLambertMaterial({color:0xF9A825}));
-  miloLabel.position.set(-0.55,Y+0.22,0.1); g.add(miloLabel);
-  const miloCap=new THREE.Mesh(new THREE.CylinderGeometry(0.175,0.175,0.04,10),new THREE.MeshLambertMaterial({color:0xFFEE58}));
-  miloCap.position.set(-0.55,Y+0.455,0.1); g.add(miloCap);
-
-  // Milk tin (right)
-  const milkBody=new THREE.Mesh(new THREE.CylinderGeometry(0.14,0.14,0.37,10),new THREE.MeshLambertMaterial({color:0xFFF8E1}));
-  milkBody.position.set(0.55,Y+0.185,0.1); g.add(milkBody);
-  const milkLabel=new THREE.Mesh(new THREE.CylinderGeometry(0.145,0.145,0.13,10),new THREE.MeshLambertMaterial({color:0xEF9A9A}));
-  milkLabel.position.set(0.55,Y+0.185,0.1); g.add(milkLabel);
-
-  // Cups + saucers — one per place, symmetric
-  function makeCup(x,z){
-    const saucer=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.16,0.03,8),new THREE.MeshLambertMaterial({color:0xFFF3E0}));
-    saucer.position.set(x,Y+0.015,z); g.add(saucer);
-    const cup=new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.08,0.22,8),new THREE.MeshLambertMaterial({color:0xFDF6F0}));
-    cup.position.set(x,Y+0.11,z); g.add(cup);
-    const handle=new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.07,0.04,8),new THREE.MeshLambertMaterial({color:0x4E342E}));
-    handle.position.set(x,Y+0.21,z); g.add(handle);
-  }
-  makeCup(0,-0.62);   // south place
-  makeCup(0, 0.62);   // north place
-
-  // Candle
-  const candleWax=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,0.28,7),new THREE.MeshLambertMaterial({color:0xFFF9C4}));
-  candleWax.position.set(0.3,Y+0.14,-0.3); g.add(candleWax);
-  const flame=new THREE.Mesh(new THREE.ConeGeometry(0.045,0.11,5),new THREE.MeshBasicMaterial({color:0xFF8F00}));
-  flame.position.set(0.3,Y+0.35,-0.3); g.add(flame);
-
-  // Wine glasses (fancy!)
-  function makeWineGlass(x,z){
-    const gM=new THREE.MeshLambertMaterial({color:0xE3F2FD,transparent:true,opacity:0.65});
-    const stemM=new THREE.MeshLambertMaterial({color:0xE3F2FD,transparent:true,opacity:0.6});
-    // bowl
-    const bowl=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.05,0.22,8),gM);
-    bowl.position.set(x,Y+0.27,z); g.add(bowl);
-    // stem
-    const stem=new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,0.2,5),stemM);
-    stem.position.set(x,Y+0.1,z); g.add(stem);
-    // base
-    const base=new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.09,0.02,8),gM);
-    base.position.set(x,Y+0.01,z); g.add(base);
-    // wine fill (red)
-    const wine=new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.04,0.1,8),new THREE.MeshLambertMaterial({color:0x7B1FA2,transparent:true,opacity:0.7}));
-    wine.position.set(x,Y+0.21,z); g.add(wine);
-  }
-  makeWineGlass(-0.38,-0.55);
-  makeWineGlass( 0.38, 0.55);
-
-  g.position.set(PX, 0, PZ - 0.5);
-  scene.add(g);
-})();
-
-// ═══════════════════════════════════════════════════════════════
-//  CURVED ENTRANCE WALLS
-// ═══════════════════════════════════════════════════════════════
-function makeCurvedWall(side){
-  const g=new THREE.Group();
-  const mat=new THREE.MeshLambertMaterial({color:0x43A047,side:THREE.DoubleSide});
-  const shape=new THREE.Shape();
-  shape.moveTo(0,0);
-  for(let i=0;i<=10;i++){const t=i/10,a=t*(Math.PI*0.55)-Math.PI*0.27;shape.lineTo(Math.sin(a)*8,t*8);}
-  shape.lineTo(0,8); shape.lineTo(0,0);
-  const mesh=new THREE.Mesh(new THREE.ExtrudeGeometry(shape,{depth:0.5,bevelEnabled:false}),mat);
-  mesh.castShadow=true; g.add(mesh);
-  g.position.set(side*12,0,16); g.rotation.y=side*-0.3;
-  return g;
-}
-scene.add(makeCurvedWall(-1)); scene.add(makeCurvedWall(1));
-
-// ═══════════════════════════════════════════════════════════════
-//  TREES  — many more!
-// ═══════════════════════════════════════════════════════════════
-function makeTree(x,z,sc=1){
-  const g=new THREE.Group();
-  const tM=new THREE.MeshLambertMaterial({color:0x6D4C41});
-  const mats=[
-    new THREE.MeshLambertMaterial({color:0x2E7D32}),
-    new THREE.MeshLambertMaterial({color:0x388E3C}),
-    new THREE.MeshLambertMaterial({color:0x43A047}),
-  ];
-  const trunk=new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.33,2.4,6),tM);
-  trunk.position.y=1.2; trunk.castShadow=true; g.add(trunk);
-  [{r:2.4,h:2.6,y:3.3,m:mats[0]},{r:1.8,h:2.1,y:4.6,m:mats[1]},{r:1.1,h:1.8,y:5.8,m:mats[2]}].forEach(l=>{
-    const mesh=new THREE.Mesh(new THREE.ConeGeometry(l.r,l.h,7),l.m);
-    mesh.position.y=l.y; mesh.castShadow=true; g.add(mesh);
-  });
-  g.scale.setScalar(sc); g.position.set(x,0,z); return g;
-}
-// ring behind pavilion + scattered field
-const treePlacements=[
-  [-8,-14,1.1],[9,-16,1.3],[-14,-8,0.9],
-  [-18,-19,1.2],[18,-21,1.0],[23,-11,1.15],[-23,-13,1.25],
-  [5,-23,0.95],[-6,-26,1.05],[29,4,1.3],[-29,7,1.1],
-  [21,14,0.85],[-21,17,1.0],[13,20,0.9],[-13,21,1.2],
-  [31,-21,1.4],[-31,-23,1.35],[16,-30,1.1],[-16,-28,0.95],
-  [35,10,1.2],[-35,12,1.1],[25,-28,1.0],[-25,-30,1.05],
-];
-treePlacements.forEach(([x,z,s])=>scene.add(makeTree(x,z,s)));
-
-// ═══════════════════════════════════════════════════════════════
-//  ROSE BUSHES ring around pavilion
-// ═══════════════════════════════════════════════════════════════
-function makeRoseBush(x,z){
-  const g=new THREE.Group();
-  const bM=new THREE.MeshLambertMaterial({color:0x388E3C});
-  const bush=new THREE.Mesh(new THREE.SphereGeometry(0.55,5,4),bM);
-  bush.position.y=0.55; bush.scale.y=0.75; g.add(bush);
-  for(let i=0;i<5;i++){
-    const col=Math.random()>0.5?0xE53935:0xFF80AB;
-    const r=new THREE.Mesh(new THREE.SphereGeometry(0.1,4,3),new THREE.MeshLambertMaterial({color:col}));
-    const ra=Math.random()*Math.PI*2,rr=0.25+Math.random()*0.28;
-    r.position.set(Math.cos(ra)*rr,0.7+Math.random()*0.3,Math.sin(ra)*rr);
-    g.add(r);
-  }
-  g.position.set(x,0,z); return g;
-}
-for(let i=0;i<10;i++){
-  const a=(i/10)*Math.PI*2,r=6.8;
-  scene.add(makeRoseBush(PX+Math.cos(a)*r,PZ+Math.sin(a)*r));
-}
-
-// ═══════════════════════════════════════════════════════════════
-//  FLOWERS
-// ═══════════════════════════════════════════════════════════════
-const fCols=[0xFF80AB,0xFFEE58,0xFF7043,0xCE93D8,0x80CBC4,0xFFCC02];
-function makeFlower(x,z){
-  const g=new THREE.Group();
-  const stem=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.35,4),new THREE.MeshLambertMaterial({color:0x66BB6A}));
-  stem.position.set(0,0.175,0); g.add(stem);
-  const col=fCols[Math.floor(Math.random()*fCols.length)];
-  const petal=new THREE.Mesh(new THREE.SphereGeometry(0.12,5,4),new THREE.MeshLambertMaterial({color:col}));
-  petal.position.set(0,0.38,0); g.add(petal);
-  g.position.set(x,0,z); return g;
-}
-[[-5,5],[5,8],[-8,2],[7,-2],[-3,12],[4,13],[-6,-4],[10,5],[-12,3],[8,10],[-4,-8],[12,-5],[2,18],[-9,15],[6,-10],[-15,-3],[14,2],[3,-15],[-2,-12],[11,-12],[17,7],[-17,5],[19,-9],[-19,3]].forEach(([x,z])=>scene.add(makeFlower(x+(Math.random()-0.5),z+(Math.random()-0.5))));
-
-// ═══════════════════════════════════════════════════════════════
-//  CLOUDS
-// ═══════════════════════════════════════════════════════════════
-const clouds=[];
-function makeCloud(x,y,z){
-  const g=new THREE.Group();
-  const mat=new THREE.MeshLambertMaterial({color:0xFFFFFF,transparent:true,opacity:0.9});
-  [[0,0,0,3.0],[-3.0,-0.4,0,2.1],[3.0,-0.5,0,2.2],[-1.4,1.1,0.3,1.6],[1.4,1.0,-0.2,1.7]].forEach(([bx,by,bz,r])=>{
-    const m=new THREE.Mesh(new THREE.DodecahedronGeometry(r,0),mat); m.position.set(bx,by,bz); g.add(m);
-  });
-  g.position.set(x,y,z); clouds.push(g); return g;
-}
-scene.add(makeCloud(-35,50,-95)); scene.add(makeCloud(28,58,-115));
-scene.add(makeCloud(65,44,-85)); scene.add(makeCloud(-68,52,-75));
-scene.add(makeCloud(10,38,-65)); scene.add(makeCloud(-15,62,-130));
-
-// ═══════════════════════════════════════════════════════════════
-//  BIRDS
-// ═══════════════════════════════════════════════════════════════
-const birds=[];
-function makeBird(x,y,z){
-  const g=new THREE.Group();
-  const bM=new THREE.MeshBasicMaterial({color:0x37474F});
-  const ws=new THREE.Shape(); ws.moveTo(0,0); ws.lineTo(1.3,0.5); ws.lineTo(0.65,0);
-  const wg=new THREE.ShapeGeometry(ws);
-  const lw=new THREE.Mesh(wg,bM), rw=new THREE.Mesh(wg,bM); rw.scale.x=-1;
-  g.add(lw); g.add(rw);
-  g.position.set(x,y,z);
-  g.userData={baseY:y,t:Math.random()*Math.PI*2,speed:0.25+Math.random()*0.2};
-  birds.push(g); return g;
-}
-for(let i=0;i<12;i++) scene.add(makeBird((Math.random()-0.5)*100,30+Math.random()*25,-45-Math.random()*75));
-
-// ═══════════════════════════════════════════════════════════════
-//  GRASS BLADES
-// ═══════════════════════════════════════════════════════════════
-const grassBlades=[];
-(function(){
-  const mat=new THREE.MeshLambertMaterial({color:0x7CB342,side:THREE.DoubleSide});
-  for(let i=0;i<280;i++){
-    const a=Math.random()*Math.PI*2,r=2+Math.random()*28;
-    const blade=new THREE.Mesh(new THREE.PlaneGeometry(0.08,0.34,1,3),mat);
-    blade.position.set(Math.cos(a)*r,0.17,Math.sin(a)*r);
-    blade.rotation.y=Math.random()*Math.PI;
-    blade.userData={t:Math.random()*Math.PI*2};
-    grassBlades.push(blade); scene.add(blade);
-  }
-})();
-
-// ═══════════════════════════════════════════════════════════════
-//  BUTTERFLIES
-// ═══════════════════════════════════════════════════════════════
-const butterflies=[];
-const bfC=[0xFCE4EC,0xE8F5E9,0xFFF9C4,0xE3F2FD,0xFFE0B2];
-function makeButterfly(x,y,z){
-  const g=new THREE.Group();
-  const mat=new THREE.MeshBasicMaterial({color:bfC[Math.floor(Math.random()*bfC.length)],side:THREE.DoubleSide,transparent:true,opacity:0.82});
-  const lW=new THREE.Mesh(new THREE.CircleGeometry(0.3,5),mat); lW.position.x=0.15;
-  const rW=new THREE.Mesh(new THREE.CircleGeometry(0.3,5),mat); rW.position.x=-0.15; rW.scale.x=-1;
-  g.add(lW); g.add(rW);
-  g.position.set(x,y,z);
-  g.userData={t:Math.random()*Math.PI*2,radius:1+Math.random()*2.5,cx:x,cz:z};
-  butterflies.push(g); return g;
-}
-for(let i=0;i<8;i++) scene.add(makeButterfly((Math.random()-0.5)*18,1.5+Math.random()*2,(Math.random()-0.5)*14));
-
-// ═══════════════════════════════════════════════════════════════
-//  ORBIT CONTROLS
-// ═══════════════════════════════════════════════════════════════
-const controls=new OrbitControls(camera,renderer.domElement);
-controls.target.set(0,2.5,-6);
-
-// ═══════════════════════════════════════════════════════════════
-//  ANIMATION
-// ═══════════════════════════════════════════════════════════════
-const clock=new THREE.Clock();
-function animate(){
-  requestAnimationFrame(animate);
-  const t=clock.getElapsedTime();
-
-  // Keep sky sphere centred on camera so it's always visible
-  skySphere.position.copy(camera.position);
-
-  // clouds drift
-  clouds.forEach((c,i)=>{c.position.x+=0.009*(i%2===0?1:-1);if(c.position.x>130)c.position.x=-130;if(c.position.x<-130)c.position.x=130;});
-
-  // birds fly + flap
-  birds.forEach(b=>{
-    b.userData.t+=0.018;
-    b.position.x+=b.userData.speed*0.07;
-    if(b.position.x>100)b.position.x=-100;
-    b.position.y=b.userData.baseY+Math.sin(b.userData.t*2)*0.9;
-    b.children[0].rotation.x=Math.sin(t*5)*0.45;
-    b.children[1].rotation.x=-Math.sin(t*5)*0.45;
-  });
-
-  // grass sway
-  grassBlades.forEach(bl=>{bl.rotation.z=Math.sin(t*1.4+bl.userData.t)*0.18;});
-
-  // butterflies orbit
-  butterflies.forEach(bf=>{
-    bf.userData.t+=0.018;
-    const a=bf.userData.t;
-    bf.position.x=bf.userData.cx+Math.cos(a)*bf.userData.radius;
-    bf.position.z=bf.userData.cz+Math.sin(a*0.7)*bf.userData.radius;
-    bf.position.y+=Math.sin(t*3+bf.userData.t)*0.005;
-    bf.children[0].rotation.y=Math.sin(t*8)*0.65;
-    bf.children[1].rotation.y=-Math.sin(t*8)*0.65;
-  });
-
-  // candle & lantern flicker
-  candleLight.intensity=1.9+Math.sin(t*7.3)*0.45+Math.sin(t*13.7)*0.28;
-  candleLight.position.y=2.2+Math.sin(t*9.1)*0.04;
-  lanternLights.forEach((ll,i)=>{ll.intensity=1.5+Math.sin(t*2.8+i*1.3)*0.35;});
-
-  controls.update();
-  renderer.render(scene,camera);
-}
-animate();
-
-window.addEventListener('resize',()=>{
-  const w=window.innerWidth,h=window.innerHeight;
-  camera.aspect=w/h; camera.updateProjectionMatrix();
-  renderer.setSize(w,h);
-});
-</script>
+</a-scene>
 </body>
 </html>
